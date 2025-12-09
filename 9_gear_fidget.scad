@@ -1,84 +1,88 @@
+///////////////////////////////////////////////////////////////
+//  3×3 Gear Grid – Frames, Bearings, Spacers, Axles
+//  Cleaned + Final Version
+//  Upper frame faces downward directly (no mirroring needed)
 //
-// Gear grid + framed sandwich + tolerance test
-// Uses gears/gears.scad (involute spur gears)
+//  Terminology:
+//  - SPACER: 6.7mm × 0.8mm disc at each of 9 points (both frames)
+//            Supports BOTH gear + bearing evenly.
+//  - NUB:    4.8mm × 2.0mm cylinder (bearing alignment pin)
+//            Only exists at bearing gears.
+//  - AXLE:   5mm post on LOWER frame for axle gears.
+//  - AXLE HOLE: press-fit hole on UPPER frame for axle gears.
 //
-// - 3x3 grid of 12T gears, OD ~28mm
-// - 695 bearings (5x13x4) in gears 1,3,5,7,9
-// - 5mm axles for gears 2,4,6,8
-// - Top/bottom flanges on every gear
-// - Framed “keypad” with center ring and chamfered exterior
+//  The stack:
 //
+//        Upper Frame Body
+//        Spacer (downward)
+//        Nub (downward, bearing gears only)
+//        ─────────────── top of bearing
+//           Bearing (4mm)
+//        ─────────────── bottom of bearing
+//        Nub (upward, bearing gears only)
+//        Spacer (upward)
+//        Lower Frame Body
+//
+///////////////////////////////////////////////////////////////
 
 include <gears/gears.scad>;
 $fn = 64;
 
-// ---------------------------------------------------
-// Global parameters
-// ---------------------------------------------------
+///////////////////////////////////////////////////////////////
+//  GLOBAL PARAMETERS + TOLERANCES
+///////////////////////////////////////////////////////////////
 
-// Base tolerances
-press_fit_tol = 0.18; // tighter press-fit (bearing pockets, axle holes)
-loose_fit_tol = 0.30; // looser running fit (gear bores, posts into bearings)
+press_fit_tol = 0.18; // tight interference
+loose_fit_tol = 0.30; // smooth running clearance
 
+//////////// GEAR INFO /////////////////////////
 gear_teeth = 12;
-gear_od = 28; // tip-to-tip OD
+gear_od = 28; // tip-to-tip
 pa_deg = 20;
+modul = gear_od / (gear_teeth + 2);
+center_dist = modul * gear_teeth;
 
-// Compute module from OD ≈ m * (N + 2)
-modul = gear_od / (gear_teeth + 2); // 28 / 14 = 2
-center_dist = modul * gear_teeth; // pitch dia for identical gears
-
-// Bearing (695) = 5 x 13 x 4 mm
+//////////// BEARING INFO //////////////////////
+// 695 bearing = 5mm ID × 13mm OD × 4mm width
 bearing_id = 5;
 bearing_od = 13;
 bearing_width = 4;
 
-gear_height = bearing_width; // gear thickness
+gear_height = bearing_width; // gears = same as bearing width
+axle_shaft_diam = 5; // Not necessarily the same as bearing ID
 
-// --- Diameters derived from tolerances ---
+//////////// SPACERS + NUBS ////////////////////////
+spacer_diam = 6.7;
+spacer_height = 0.8;
+nub_height = 2.0; // EACH FRAME contributes 2.0mm → total 4mm
 
-// Press-fit bearing pocket in gears (OD of bearing)
-bearing_bore_diam = bearing_od + press_fit_tol; // ~13.18
+//////////// FRAME DIMENSIONS //////////////////////
+frame_height = 4; // body thickness
+frame_bar_width = 2;
+frame_bevel = 0; // set >0 if chamfer desired
 
-// Gear bores for axle gears (loose on 5 mm pin)
-axle_nominal = 5;
-axle_bore_diam = axle_nominal + loose_fit_tol; // ~5.30
+//////////// DERIVED DIAMETERS ////////////////////
+bearing_bore_diam = bearing_od + press_fit_tol; // pocket in gear
 
-// Printed axle shaft (for frames)
-axle_shaft_diam = 5; // nominal 5 mm
+axle_bore_diam = axle_shaft_diam + loose_fit_tol; // gear bore for axle gears
+axle_hole_diam = axle_shaft_diam - press_fit_tol; // press-fit hole
+bearing_nub_diam = bearing_id - loose_fit_tol; // enters bearing ID
 
-// Press-fit hole in upper frame for axle shaft
-axle_hole_diam = axle_shaft_diam - press_fit_tol; // ~4.82
+//////////// AXLE LENGTH /////////////////////////////
+axle_length = frame_height + spacer_height + gear_height;
+// = lower frame body + lower spacer + full gear thickness
+// This ensures axle passes fully through to upper frame hole.
 
-// --- Frame nubs (flanges now live on the frames) ---
-frame_nub_diam = 6.7;
-frame_nub_height = 0.8;
+//////////// CORNER PAD DIAMETERS ///////////////////////
+corner_diam_bearing = 14;
+corner_diam_axle = 8;
 
-// --- Bearing centering posts (inside 5mm ID bearing) ---
-// Small undersized stub that sits in the 5mm ID bearing (loose fit)
-bearing_post_diam = bearing_id - loose_fit_tol; // e.g. 5 - 0.30 = 4.7
-
-// Frame
-frame_bar_width = 2; // bar / ring width
-frame_height = 4;
-frame_bevel = 0; // amount of chamfer (shrink at top)
-
-// Axle length is derived from the stack:
-//   frame body + frame nub + gear height
-// so the full axle spans through nub + gear to meet the top frame.
-axle_length = frame_height + frame_nub_height + gear_height;
-
-corner_diam_bearing = 14; // big pad for bearing gears
-corner_diam_axle = 8; // small pad for axle gears (if any corner ever is axle)
-
-// ---------------------------------------------------
-// Role lookup: bearing vs axle per keypad key (1..9)
-// 1 = bearing gear, 0 = axle gear
-// Here: 1,3,5,7,9 = bearing; 2,4,6,8 = axle
-// ---------------------------------------------------
+///////////////////////////////////////////////////////////////
+//  ROLE LOOKUP LIST
+///////////////////////////////////////////////////////////////
 bearing_lut = [
-  1, // key 1
-  0, // key 2
+  1, // key 1 = bearing
+  0, // key 2 = axle
   1, // key 3
   0, // key 4
   1, // key 5
@@ -91,19 +95,9 @@ bearing_lut = [
 function is_bearing_key(key) = bearing_lut[key - 1] == 1;
 function is_axle_key(key) = !is_bearing_key(key);
 
-// ---------------------------------------------------
-// Utility functions
-// ---------------------------------------------------
-
-function distance(a, b) =
-  sqrt(
-    (b[0] - a[0]) * (b[0] - a[0]) + (b[1] - a[1]) * (b[1] - a[1])
-  );
-
-// 3x3 grid of points, like keypad 1–9
-// 1 2 3
-// 4 5 6
-// 7 8 9
+///////////////////////////////////////////////////////////////
+//  POINT GRID
+///////////////////////////////////////////////////////////////
 function gear_grid_points(rows, cols, spacing) =
   [
     for (r = [0:rows - 1], c = [0:cols - 1]) [
@@ -114,12 +108,15 @@ function gear_grid_points(rows, cols, spacing) =
 
 points_3x3 = gear_grid_points(3, 3, center_dist);
 
-// keypad index (1..9) to point
 function point_from_key(points, key) = points[key - 1];
 
-// ---------------------------------------------------
-// 2D helper: rectangle between two points
-// ---------------------------------------------------
+///////////////////////////////////////////////////////////////
+//  2D helper: rectangle between two points
+///////////////////////////////////////////////////////////////
+function distance(a, b) =
+  sqrt(
+    (a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1])
+  );
 
 module rect_between(p1, p2, w) {
   dx = p2[0] - p1[0];
@@ -136,12 +133,10 @@ module rect_between(p1, p2, w) {
       square([d + w, w], center=true);
 }
 
-// ---------------------------------------------------
-// 2D frame outline: bars, corner pads, center ring
-// ---------------------------------------------------
-
+///////////////////////////////////////////////////////////////
+//  2D FRAME OUTLINE (top-down)
+///////////////////////////////////////////////////////////////
 module frame_shape_2d(points, rect_width) {
-
   key_pairs = [
     [1, 3],
     [3, 9],
@@ -161,18 +156,14 @@ module frame_shape_2d(points, rect_width) {
       rect_between(p1, p2, rect_width);
     }
 
-    // --- Corner pads: size depends on bearing vs axle role ---
+    // Corner pads, size depends on bearing vs axle
     for (k = [1:9]) {
       p = point_from_key(points, k);
-
-      // Lookup: is this key a bearing gear?
       d = is_bearing_key(k) ? corner_diam_bearing : corner_diam_axle;
-
-      translate(p)
-        circle(d=d, $fn=64);
+      translate(p) circle(d=d, $fn=64);
     }
 
-    // Center ring: thickness = rect_width
+    // Central ring
     p4 = point_from_key(points, 4);
     p6 = point_from_key(points, 6);
     pc = point_from_key(points, 5);
@@ -185,143 +176,115 @@ module frame_shape_2d(points, rect_width) {
       }
   }
 }
-// ---------------------------------------------------
-// Bearing visualization (NOT for printing)
-// 695 bearing: ID, OD, width
-// ---------------------------------------------------
-module bearing_visual(od = bearing_od, id = bearing_id, width = bearing_width) {
-  // Outer ring
-  color("black")
-    difference() {
-      cylinder(d=od, h=width, center=true, $fn=64);
-      cylinder(d=id, h=width + 0.2, center=true, $fn=48);
-    }
+
+///////////////////////////////////////////////////////////////
+//  3D FRAME BODY
+///////////////////////////////////////////////////////////////
+module frame_body(points, w, h) {
+  // TODO: add bevel
+  linear_extrude(height=h)
+    frame_shape_2d(points, w);
 }
 
-// ---------------------------------------------------
-// 3D frame: chamfered extrusion of the 2D shape
-// ---------------------------------------------------
-
-module frame_body(points, rect_width, height, bevel = frame_bevel) {
-  // Simple chamfer: top slightly scaled inwards
-  linear_extrude(height=height, scale=(1 - bevel / height))
-    frame_shape_2d(points, rect_width);
-}
-
-// Lower frame: chamfered body + face nubs at all points
+///////////////////////////////////////////////////////////////
+//  LOWER FRAME (UPWARD SPACERS + UPWARD NUBS/AXLES)
+///////////////////////////////////////////////////////////////
 module lower_frame(points) {
   union() {
     // Main frame body
     frame_body(points, frame_bar_width, frame_height);
 
-    // For every gear position 1..9
     for (key = [1:9]) {
       p = point_from_key(points, key);
 
-      // --- Face nub (flange) for both bearing & axle gears ---
+      // Spacer 
       translate([p[0], p[1], frame_height])
-        cylinder(d=frame_nub_diam, h=frame_nub_height, $fn=32);
+        cylinder(d=spacer_diam, h=spacer_height, $fn=48);
 
-      // --- Role-dependent posts ---
       if (is_bearing_key(key)) {
-        // Bearing: half-height centering post
-        translate([p[0], p[1], frame_height + frame_nub_height])
-          cylinder(
-            d=bearing_post_diam,
-            h=axle_length / 2,
-            $fn=32
-          );
+        // Bearing half-height centering post
+        translate([p[0], p[1], frame_height + spacer_height])
+          cylinder(d=bearing_nub_diam, h=nub_height, $fn=48);
       } else {
-        // Axle gear: full-length axle shaft
-        translate([p[0], p[1], frame_height + frame_nub_height])
-          cylinder(
-            d=axle_shaft_diam,
-            h=axle_length,
-            $fn=32
-          );
+        // Axle (upward)
+        translate([p[0], p[1], frame_height + spacer_height])
+          cylinder(d=axle_shaft_diam, h=axle_length, $fn=48);
       }
     }
   }
 }
 
-// Upper frame: body at Z=0..frame_height,
-// nubs and posts extend DOWN toward the gears (negative Z)
+///////////////////////////////////////////////////////////////
+//  UPPER FRAME (DOWNWARD SPACERS + DOWNWARD NUBS + HOLES)
+///////////////////////////////////////////////////////////////
 module upper_frame(points) {
   difference() {
     union() {
-
       // Frame body
       frame_body(points, frame_bar_width, frame_height);
 
-      // Nubs + bearing half-posts (extend downward)
       for (key = [1:9]) {
         p = point_from_key(points, key);
 
-        // --- Downward nub ---
+        // Spacer (DOWNWARD)
         translate([p[0], p[1], 0])
-          cylinder(
-            d=frame_nub_diam,
-            h=frame_nub_height,
-            $fn=32,
-            center=false
-          );
+          cylinder(d=spacer_diam, h=spacer_height, $fn=48);
 
-        // --- Downward bearing half-post ---
+        // Bearing nub (DOWNWARD)
         if (is_bearing_key(key)) {
-          translate([p[0], p[1], -axle_length / 2])
-            cylinder(
-              d=bearing_post_diam,
-              h=axle_length / 2 + frame_nub_height,
-              $fn=32
-            );
+          translate([p[0], p[1], -nub_height])
+            cylinder(d=bearing_nub_diam, h=nub_height, $fn=48);
         }
       }
     }
 
-    // --- Axle holes: cut DOWN through the frame and nub area ---
+    // Axle holes (DOWNWARD) for axle gears
     for (key = [1:9]) {
       if (is_axle_key(key)) {
         p = point_from_key(points, key);
-
-        translate([p[0], p[1], -frame_height - axle_length])
+        translate([p[0], p[1], -axle_length - 2])
           cylinder(
             d=axle_hole_diam,
-            h=frame_height + axle_length + 5,
-            $fn=32
+            h=axle_length + 4,
+            $fn=48
           );
       }
     }
   }
 }
 
-// ---------------------------------------------------
-// Gears: bearings vs axles, flanges both sides
-// ---------------------------------------------------
+///////////////////////////////////////////////////////////////
+//  GEARS
+///////////////////////////////////////////////////////////////
+module gear_with_bore(diam) {
+  translate([0, 0, -gear_height / 2])
+    spur_gear(
+      modul, gear_teeth, gear_height,
+      diam, pressure_angle=pa_deg, optimized=false
+    );
+}
 
-// Place gears at grid points (1..9) with bearings / axle bores
 module gears_at_points(points) {
-  half_tooth_angle = 180 / gear_teeth; // 360 / (2*N) = 15° for 12T
-
+  half_rot = 180 / gear_teeth;
   for (i = [0:len(points) - 1]) {
-    p = points[i];
     key = i + 1;
-
+    p = points[i];
     // Alternate gear rotation for visible meshing
-    ang = (i % 2 == 1) ? half_tooth_angle : 0;
+    ang = (i % 2 == 1) ? half_rot : 0;
 
-    use_bearing = is_bearing_key(key);
-    bore = use_bearing ? bearing_bore_diam : axle_bore_diam;
-
-    translate([p[0], p[1], -gear_height / 2])
+    translate([p[0], p[1], 0])
       rotate([0, 0, ang])
-        spur_gear(
-          modul,
-          gear_teeth,
-          gear_height,
-          bore_diam,
-          pressure_angle=pa_deg,
-          optimized=false
-        );
+        gear_with_bore(bore);
+  }
+}
+
+///////////////////////////////////////////////////////////////
+//  BEARING VISUAL (not printed)
+///////////////////////////////////////////////////////////////
+module bearing_visual() {
+  difference() {
+    cylinder(d=bearing_od, h=bearing_width, center=true, $fn=64);
+    cylinder(d=bearing_id, h=bearing_width + 0.2, center=true, $fn=48);
   }
 }
 
@@ -337,117 +300,66 @@ module bearings_at_points(points) {
   }
 }
 
-// ---------------------------------------------------
-// Main assemblies
-// ---------------------------------------------------
+///////////////////////////////////////////////////////////////
+//  TEST PIECES (updated)
+///////////////////////////////////////////////////////////////
 
-// Full gadget: lower frame, gears, upper frame.
-// (Z positioning is illustrative; for printing, export parts separately.)
-module assembly() {
-
-  // Lower frame: drop so spacer top touches gear/bearing bottom (z=0)
-  //translate([0, 0, -(frame_height + spacer_height)])
-  color("red", 0.6)
-    lower_frame(points_3x3);
-
-  // Gears centered on Z = 0..4
-  color("silver", 0.9)
-    gears_at_points(points_3x3);
-
-  // Bearings at correct Z
-  color("grey", 0.5)
-    translate([0, 0, 0])
-      bearings_at_points(points_3x3);
-
-  // Upper frame: lift so spacer bottom touches gear top (z=4)
-  // translate([0,0, gear_height])
-  //   color("lime",0.6)
-  //     upper_frame(points_3x3);
+module test_axle_block() {
+  cube([30, 20, frame_height], center=true);
+  translate([0, 0, frame_height / 2])
+    cylinder(d=axle_shaft_diam, h=axle_length, $fn=48);
 }
 
-// ---------------------------------------------------
-// Tolerance test module
-// - Block with axle
-// - Block with press-fit hole
-// - Gear with axle bore + flanges
-// - Gear with bearing bore + flanges
-// ---------------------------------------------------
-
-module test_block_with_axle() {
-  block_x = 30;
-  block_y = 20;
-  block_z = frame_height;
-
-  union() {
-    cube([block_x, block_y, block_z], center=true);
-
-    translate([0, 0, block_z / 2])
-      cylinder(d=axle_shaft_diam, h=axle_length, $fn=32);
-  }
-}
-
-module test_block_with_hole() {
-  block_x = 30;
-  block_y = 20;
-  block_z = frame_height;
-
+module test_hole_block() {
   difference() {
-    cube([block_x, block_y, block_z], center=true);
-
-    translate([0, 0, -block_z / 2 - 1])
-      cylinder(d=axle_hole_diam, h=block_z + 2, $fn=32);
+    cube([30, 20, frame_height], center=true);
+    translate([0, 0, -frame_height / 2 - 2])
+      cylinder(d=axle_hole_diam, h=frame_height + 4, $fn=48);
   }
 }
 
-module test_gear_axle_bore() {
+module test_gear_axle() {
   gear_with_bore(axle_bore_diam);
 }
 
-module test_gear_bearing_bore() {
+module test_gear_bearing() {
   gear_with_bore(bearing_bore_diam);
 }
 
-module tolerance_test() {
-  // Left: axle block
-  translate([-40, 0, 0])
-    test_block_with_axle();
-
-  // Right: hole block
-  translate([40, 0, 0])
-    test_block_with_hole();
-
-  // Top: gear with axle bore
-  translate([0, 35, 0])
-    test_gear_axle_bearing_label(false);
-
-  // Bottom: gear with bearing bore
-  translate([0, -35, 0])
-    test_gear_axle_bearing_label(true);
+module tests() {
+  translate([-40, 0, 0]) test_axle_block();
+  translate([40, 0, 0]) test_hole_block();
+  translate([0, 30, 0]) test_gear_axle();
+  translate([0, -30, 0]) test_gear_bearing();
 }
 
-// helper so you can visually tell them apart if you want
-module test_gear_axle_bearing_label(is_bearing) {
-  if (is_bearing) {
-    color("orange")
-      test_gear_bearing_bore();
-  } else {
-    color("cyan")
-      test_gear_axle_bore();
-  }
+///////////////////////////////////////////////////////////////
+//  ASSEMBLY VIEW (no mirroring needed)
+///////////////////////////////////////////////////////////////
+
+module assembly() {
+  // correct placement so spacers/nubs touch bearing/gear surfaces
+  offset = gear_height / 2 + spacer_height;
+
+  // lower frame
+  color("red", 0.7)
+    translate([0, 0, -offset])
+      lower_frame(points_3x3);
+
+  // gears
+  color("silver", 0.9)
+    gears_at_points(points_3x3);
+
+  // bearings (visual)
+  color("black", 0.3)
+    bearings_at_points(points_3x3);
+
+  // upper frame
+  color("lime", 0.7)
+    translate([0, 0, offset])
+      upper_frame(points_3x3);
 }
 
-// ---------------------------------------------------
-// Choose what to render
-// ---------------------------------------------------
-
-// Uncomment ONE of these at a time when you render/export:
-
-//gears_at_points(points_3x3);
-
-// Full assembly preview (for sanity checking)
+// WHAT TO RENDER?
 assembly();
-
-// Tolerance test pieces for printing
-//tolerance_test();
-
-//upper_frame(points=points_3x3);
+// tests();
