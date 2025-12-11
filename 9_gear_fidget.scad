@@ -73,11 +73,11 @@ corner_diam_all = 8;
 
 // Center spinner shaft & journals (HEX)
 // Across-flats for the hex shaft
-center_shaft_hex_af      = 3.0;               // try 3.0mm AF (2 perimeters in journal wall)
-center_hex_clearance     = press_fit_tol;     // clearance in journal hex hole, etc.
+center_shaft_hex_af = 3.0; // try 3.0mm AF (2 perimeters in journal wall)
+center_hex_clearance = press_fit_tol; // clearance in journal hex hole, etc.
 
 // Outer diameter of journal that rides in 5mm bearing ID
-center_shaft_round_d     = bearing_id - press_fit_tol; 
+center_shaft_round_d = bearing_id - press_fit_tol;
 
 // Hole through frame floors must clear the hex corners
 // Hex circumradius R = AF / sqrt(3); diameter = 2R
@@ -118,10 +118,12 @@ module rect_between(p1, p2, w) {
 }
 // Regular hexagon, across-flats = af
 module hex2d(af) {
-  R = af / sqrt(3);  // circumradius
-  polygon(points = [
-    for (i = [0:5]) [ R * cos(60*i), R * sin(60*i) ]
-  ]);
+  R = af / sqrt(3); // circumradius
+  polygon(
+    points=[
+      for (i = [0:5]) [R * cos(60 * i), R * sin(60 * i)],
+    ]
+  );
 }
 // Central bearing pocket at key 5, cut from the frame plate
 module center_bearing_pocket(points) {
@@ -157,52 +159,29 @@ shaft_extra_each = 3; // sticks out each side, room for caps later
 module center_shaft() {
   shaft_len = shaft_total_len + 2 * shaft_extra_each;
 
-  translate([0, 0, -shaft_len/2])
-    linear_extrude(height = shaft_len)
+  translate([0, 0, -shaft_len / 2])
+    linear_extrude(height=shaft_len)
       hex2d(center_shaft_hex_af);
 }
 // Journal: cylinder in the bearing, hex hole for hex shaft
 module center_journal() {
-  journal_len = bearing_width + 2*eps;  // a hair longer than the bearing
+  journal_len = bearing_width + 2 * eps; // a hair longer than the bearing
 
   difference() {
     // Outer cylinder: fits in bearing ID
     cylinder(
-      d      = center_shaft_round_d,
-      h      = journal_len,
-      center = true,
-      $fn    = 64
+      d=center_shaft_round_d,
+      h=journal_len,
+      center=true,
+      $fn=64
     );
 
     // Inner hex hole: slides over hex shaft with a bit of clearance
-    translate([0, 0, -journal_len/2 - eps])
-      linear_extrude(height = journal_len + 2*eps)
+    translate([0, 0, -journal_len / 2 - eps])
+      linear_extrude(height=journal_len + 2 * eps)
         hex2d(center_shaft_hex_af + center_hex_clearance);
   }
 }
-// -----------------------------------------------------------
-// Bearing visualization (NOT for printing)
-// -----------------------------------------------------------
-module bearing_visual() {
-  difference() {
-    // Outer race
-    cylinder(
-      d      = bearing_od,
-      h      = bearing_width,
-      center = true,
-      $fn    = 64
-    );
-
-    // Inner bore
-    cylinder(
-      d      = bearing_id,
-      h      = bearing_width + 2*eps,
-      center = true,
-      $fn    = 48
-    );
-  }
-}
-
 
 ///////////////////////////////////////////////////////////////
 //  2D FRAME OUTLINE (plan view)
@@ -282,7 +261,7 @@ module frame(points, is_upper = false) {
             );
 
           // Axle posts only on the LOWER frame, skip center
-          if (!is_upper ) {
+          if (!is_upper) {
             translate([p[0], p[1], frame_height + spacer_height - eps])
               cylinder(
                 d=axle_shaft_diam,
@@ -336,6 +315,33 @@ module gear_with_bore(bore_diam) {
       optimized=false
     );
 }
+// Gear with HEX bore for the center gear
+module gear_with_hex_bore(af) {
+  hex_r = af / sqrt(3); // circumradius
+
+  translate([0, 0, -gear_height / 2])
+    difference() {
+
+      // The gear body
+      spur_gear(
+        modul,
+        gear_teeth,
+        gear_height,
+        bore=0, // we will subtract our own bore
+        pressure_angle=pa_deg,
+        optimized=false
+      );
+
+      // Subtract hex bore
+      translate([0, 0, -eps])
+        linear_extrude(height=gear_height + 2 * eps)
+          polygon(
+            points=[
+              for (i = [0:5]) [hex_r * cos(60 * i), hex_r * sin(60 * i)],
+            ]
+          );
+    }
+}
 
 module gears_at_points(points) {
   half_tooth_angle = 180 / gear_teeth; // for visual meshing
@@ -343,10 +349,15 @@ module gears_at_points(points) {
   for (i = [0:len(points) - 1]) {
     p = points[i];
     ang = (i % 2 == 1) ? half_tooth_angle : 0;
+    key = i + 1;
 
     // All gears now use the same axle bore
     translate([p[0], p[1], 0])
       rotate([0, 0, ang])
+
+      if (key == 5)
+        gear_with_hex_bore(center_shaft_hex_af);
+      else
         gear_with_bore(axle_bore_diam);
   }
 }
@@ -427,8 +438,8 @@ module assembly() {
   upper_shift = +(frame_height - gear_height / 2 + frame_height + spacer_height);
 
   // Journals: one in each bearing pocket
-  bearing_center_local = bearing_pocket_floor + bearing_pocket_depth/2;
-   // Lower journal (in lower frame's bearing)
+  bearing_center_local = bearing_pocket_floor + bearing_pocket_depth / 2;
+  // Lower journal (in lower frame's bearing)
   color("orange")
     translate([pc[0], pc[1], lower_shift + bearing_center_local])
       center_journal();
@@ -444,11 +455,11 @@ module assembly() {
       frame(points_3x3);
 
   // Gears
-  // color("silver")
-  //   gears_at_points(points_3x3);
+  color("silver")
+    gears_at_points(points_3x3);
 
- // --- Bearing visuals (one in each frame pocket) ---
-  bearing_center_local = bearing_pocket_floor + bearing_pocket_depth/2;
+  // --- Bearing visuals (one in each frame pocket) ---
+  bearing_center_local = bearing_pocket_floor + bearing_pocket_depth / 2;
 
   // Lower bearing
   color("gray", 0.6)
@@ -482,3 +493,4 @@ assembly();
 //frame(points_3x3);
 //center_shaft();
 //center_journal();
+//gear_with_hex_bore(af = center_shaft_hex_af);
