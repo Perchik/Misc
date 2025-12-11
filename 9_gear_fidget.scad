@@ -71,9 +71,17 @@ frame_chamfer = 0.8; // tweak to taste (mm)
 // Corner pad sizes (cosmetic / support zones)
 corner_diam_all = 8;
 
-// Center spinner shaft
-center_shaft_round_d = bearing_id - loose_fit_tol; // shaft OD in bearing ID (slip fit)
-center_shaft_clearance_d = bearing_id + loose_fit_tol; // hole through frame floors
+// Center spinner shaft & journals (HEX)
+// Across-flats for the hex shaft
+center_shaft_hex_af      = 3.0;               // try 3.0mm AF (2 perimeters in journal wall)
+center_hex_clearance     = press_fit_tol;     // clearance in journal hex hole, etc.
+
+// Outer diameter of journal that rides in 5mm bearing ID
+center_shaft_round_d     = bearing_id - press_fit_tol; 
+
+// Hole through frame floors must clear the hex corners
+// Hex circumradius R = AF / sqrt(3); diameter = 2R
+center_shaft_clearance_d = 2 * (center_shaft_hex_af / sqrt(3)) + loose_fit_tol;
 
 ///////////////////////////////////////////////////////////////
 //  GRID POINTS
@@ -108,7 +116,13 @@ module rect_between(p1, p2, w) {
     rotate(ang)
       square([d + w, w], center=true);
 }
-
+// Regular hexagon, across-flats = af
+module hex2d(af) {
+  R = af / sqrt(3);  // circumradius
+  polygon(points = [
+    for (i = [0:5]) [ R * cos(60*i), R * sin(60*i) ]
+  ]);
+}
 // Central bearing pocket at key 5, cut from the frame plate
 module center_bearing_pocket(points) {
   pc = point_from_key(points, 5);
@@ -141,13 +155,54 @@ shaft_total_len = 2 * (frame_height + spacer_height + gear_height);
 shaft_extra_each = 3; // sticks out each side, room for caps later
 
 module center_shaft() {
-  cylinder(
-    d=center_shaft_round_d,
-    h=shaft_total_len + 2 * shaft_extra_each,
-    center=true,
-    $fn=48
-  );
+  shaft_len = shaft_total_len + 2 * shaft_extra_each;
+
+  translate([0, 0, -shaft_len/2])
+    linear_extrude(height = shaft_len)
+      hex2d(center_shaft_hex_af);
 }
+// Journal: cylinder in the bearing, hex hole for hex shaft
+module center_journal() {
+  journal_len = bearing_width + 2*eps;  // a hair longer than the bearing
+
+  difference() {
+    // Outer cylinder: fits in bearing ID
+    cylinder(
+      d      = center_shaft_round_d,
+      h      = journal_len,
+      center = true,
+      $fn    = 64
+    );
+
+    // Inner hex hole: slides over hex shaft with a bit of clearance
+    translate([0, 0, -journal_len/2 - eps])
+      linear_extrude(height = journal_len + 2*eps)
+        hex2d(center_shaft_hex_af + center_hex_clearance);
+  }
+}
+// -----------------------------------------------------------
+// Bearing visualization (NOT for printing)
+// -----------------------------------------------------------
+module bearing_visual() {
+  difference() {
+    // Outer race
+    cylinder(
+      d      = bearing_od,
+      h      = bearing_width,
+      center = true,
+      $fn    = 64
+    );
+
+    // Inner bore
+    cylinder(
+      d      = bearing_id,
+      h      = bearing_width + 2*eps,
+      center = true,
+      $fn    = 48
+    );
+  }
+}
+
 
 ///////////////////////////////////////////////////////////////
 //  2D FRAME OUTLINE (plan view)
@@ -371,20 +426,45 @@ module assembly() {
   // Shift so that -> global z = +gear_height/2 = +2
   upper_shift = +(frame_height - gear_height / 2 + frame_height + spacer_height);
 
+  // Journals: one in each bearing pocket
+  bearing_center_local = bearing_pocket_floor + bearing_pocket_depth/2;
+   // Lower journal (in lower frame's bearing)
+  color("orange")
+    translate([pc[0], pc[1], lower_shift + bearing_center_local])
+      center_journal();
+
+  // Upper journal (in upper frame's bearing)
+  color("orange")
+    translate([pc[0], pc[1], upper_shift - bearing_center_local])
+      center_journal();
+
   // Lower frame
   color("purple")
     translate([0, 0, lower_shift])
       frame(points_3x3);
 
   // Gears
-  color("silver")
-    gears_at_points(points_3x3);
+  // color("silver")
+  //   gears_at_points(points_3x3);
+
+ // --- Bearing visuals (one in each frame pocket) ---
+  bearing_center_local = bearing_pocket_floor + bearing_pocket_depth/2;
+
+  // Lower bearing
+  color("gray", 0.6)
+    translate([pc[0], pc[1], lower_shift + bearing_center_local])
+      bearing_visual();
+
+  // Upper bearing (mirrored frame: subtract local z)
+  color("gray", 0.6)
+    translate([pc[0], pc[1], upper_shift - bearing_center_local])
+      bearing_visual();
 
   // Upper frame
-  color("lime")
-    translate([0, 0, upper_shift])
-      mirror([0, 0, 1])
-        upper_frame(points_3x3);
+  // color("lime")
+  //   translate([0, 0, upper_shift])
+  //     mirror([0, 0, 1])
+  //       upper_frame(points_3x3);
 
   // Center shaft
   pc = point_from_key(points_3x3, 5);
@@ -400,3 +480,5 @@ assembly();
 //upper_frame(points_3x3);
 //tests();
 //frame(points_3x3);
+//center_shaft();
+//center_journal();
