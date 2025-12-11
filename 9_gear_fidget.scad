@@ -209,30 +209,32 @@ module frame(points, is_upper = false) {
   difference() {
     union() {
       // Frame body
-      linear_extrude(height=frame_height,convexity=2)
+      linear_extrude(height=frame_height, convexity=2)
         frame_shape_2d(points, frame_bar_width);
 
       // Features at each gear point
       for (key = [1:9]) {
-        p = point_from_key(points, key);
+        if (key != 5) {
+          p = point_from_key(points, key);
 
-        // Spacer sits on top of the frame body
-        // Slight overlap into frame and above to avoid coplanar
-        translate([p[0], p[1], frame_height - eps])
-          cylinder(
-            d=spacer_diam,
-            h=spacer_height + 2 * eps,
-            $fn=48
-          );
-
-        // Axle posts only on the LOWER frame, skip center
-        if (!is_upper && key != 5) {
-          translate([p[0], p[1], frame_height + spacer_height - eps])
+          // Spacer sits on top of the frame body
+          // Slight overlap into frame and above to avoid coplanar
+          translate([p[0], p[1], frame_height - eps])
             cylinder(
-              d=axle_shaft_diam,
-              h=axle_length + 2 * eps,
+              d=spacer_diam,
+              h=spacer_height + 2 * eps,
               $fn=48
             );
+
+          // Axle posts only on the LOWER frame, skip center
+          if (!is_upper ) {
+            translate([p[0], p[1], frame_height + spacer_height - eps])
+              cylinder(
+                d=axle_shaft_diam,
+                h=axle_length + 2 * eps,
+                $fn=48
+              );
+          }
         }
       }
     }
