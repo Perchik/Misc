@@ -17,7 +17,7 @@
 include <gears/gears.scad>;
 include <BOSL2/std.scad>; // BOSL2
 $fn = 64;
-eps = .01;
+eps = 0.01;
 
 ///////////////////////////////////////////////////////////////
 //  GLOBAL PARAMETERS + TOLERANCES
@@ -60,7 +60,7 @@ axle_length = gear_height + spacer_height + axle_inset;
 
 // Frame pockets for bearing outer race at the center (key 5)
 bearing_pocket_diam = bearing_od + press_fit_tol;
-bearing_pocket_depth = bearing_width; // full plate thickness (radial press-fit)
+bearing_pocket_depth = bearing_width;
 bearing_pocket_floor = 2;
 
 // Frame body
@@ -74,6 +74,7 @@ corner_diam_all = 8;
 // Center spinner shaft
 center_shaft_round_d = bearing_id - loose_fit_tol; // shaft OD in bearing ID (slip fit)
 center_shaft_clearance_d = bearing_id + loose_fit_tol; // hole through frame floors
+
 ///////////////////////////////////////////////////////////////
 //  GRID POINTS
 ///////////////////////////////////////////////////////////////
@@ -112,19 +113,30 @@ module rect_between(p1, p2, w) {
 module center_bearing_pocket(points) {
   pc = point_from_key(points, 5);
 
-  // Cut a cylindrical hole straight through the frame plate (0..frame_height)
-  translate([pc[0], pc[1], 1])
-    cylinder(d=bearing_pocket_diam, h=bearing_pocket_depth + 2, $fn=64);
+  // Pocket starts just above the floor and overshoots the top by eps
+  translate([pc[0], pc[1], bearing_pocket_floor - eps])
+    cylinder(
+      d=bearing_pocket_diam,
+      h=bearing_pocket_depth + 2 * eps,
+      $fn=64
+    );
 }
 
+// Shaft clearance hole through frame floors
 module center_shaft_hole(points) {
   pc = point_from_key(points, 5);
 
-  translate([pc[0], pc[1], -1])
-    cylinder(d=center_shaft_clearance_d, h=frame_height + 2, $fn=48);
+  // Slightly below and above to avoid coplanar faces
+  translate([pc[0], pc[1], -eps])
+    cylinder(
+      d=center_shaft_clearance_d,
+      h=frame_height + 2 * eps,
+      $fn=48
+    );
 }
 
-// Simple center shaft 
+// Simple center shaft (round only for now)
+// We'll add a square middle later.
 shaft_total_len = 2 * (frame_height + spacer_height + gear_height);
 shaft_extra_each = 3; // sticks out each side, room for caps later
 
@@ -188,34 +200,46 @@ module frame_shape_2d(points, w) {
 }
 
 ///////////////////////////////////////////////////////////////
-//  UNIFIED FRAME MODULE (NO BEARINGS)
+//  UNIFIED FRAME MODULE (NO BEARINGS YET)
 //  Spacers ALWAYS drawn at all 9 points on both frames.
-//  LOWER frame draws axles at all 9 points.
+//  LOWER frame draws axles at all 9 points (except center).
 //  UPPER frame subtracts axle holes at all 9 points.
 ///////////////////////////////////////////////////////////////
 module frame(points, is_upper = false) {
-  // Base frame + spacers + (optionally) axles
   difference() {
     union() {
-      linear_extrude(height=frame_height) frame_shape_2d(points, frame_bar_width);
+      // Frame body
+      linear_extrude(height=frame_height,convexity=2)
+        frame_shape_2d(points, frame_bar_width);
 
       // Features at each gear point
       for (key = [1:9]) {
         p = point_from_key(points, key);
 
         // Spacer sits on top of the frame body
-        translate([p[0], p[1], frame_height])
-          cylinder(d=spacer_diam, h=spacer_height, $fn=48);
+        // Slight overlap into frame and above to avoid coplanar
+        translate([p[0], p[1], frame_height - eps])
+          cylinder(
+            d=spacer_diam,
+            h=spacer_height + 2 * eps,
+            $fn=48
+          );
 
-        // Axle posts only on the LOWER frame
+        // Axle posts only on the LOWER frame, skip center
         if (!is_upper && key != 5) {
-          translate([p[0], p[1], frame_height + spacer_height])
-            cylinder(d=axle_shaft_diam, h=axle_length, $fn=48);
+          translate([p[0], p[1], frame_height + spacer_height - eps])
+            cylinder(
+              d=axle_shaft_diam,
+              h=axle_length + 2 * eps,
+              $fn=48
+            );
         }
       }
     }
-    color("purple") center_bearing_pocket(points);
-    center_shaft_hole(points=points);
+
+    // center features (subtractive)
+    center_bearing_pocket(points);
+    center_shaft_hole(points);
   }
 }
 
@@ -229,10 +253,10 @@ module upper_frame(points) {
       union() {
         for (key = [1:9]) {
           p = point_from_key(points, key);
-          translate([p[0], p[1], frame_height - axle_inset])
+          translate([p[0], p[1], frame_height - axle_inset - eps])
             cylinder(
               d=axle_hole_diam,
-              h=axle_length,
+              h=axle_length + 2 * eps,
               $fn=48
             );
         }
@@ -244,11 +268,12 @@ module upper_frame(points) {
 //  GEARS (centered at Z = -gear_height/2 .. +gear_height/2)
 ///////////////////////////////////////////////////////////////
 module gear_with_bore(bore_diam) {
-  translate([0, 0, -gear_height / 2])
+  // Slightly extend above/below to avoid coplanar with spacers
+  translate([0, 0, -gear_height / 2 - eps])
     spur_gear(
       modul,
       gear_teeth,
-      gear_height,
+      gear_height + 2 * eps,
       bore_diam,
       pressure_angle=pa_deg,
       optimized=false
@@ -279,8 +304,12 @@ module test_axle_block() {
 
   union() {
     cube([block_x, block_y, block_z], center=true);
-    translate([0, 0, block_z / 2 - .1])
-      cylinder(d=axle_shaft_diam, h=axle_length, $fn=48);
+    translate([0, 0, block_z / 2 - 0.1])
+      cylinder(
+        d=axle_shaft_diam,
+        h=axle_length,
+        $fn=48
+      );
   }
 }
 
@@ -292,7 +321,11 @@ module test_hole_block() {
   difference() {
     cube([block_x, block_y, block_z], center=true);
     translate([0, 0, -block_z / 2 - 2])
-      cylinder(d=axle_hole_diam, h=block_z + 4, $fn=48);
+      cylinder(
+        d=axle_hole_diam,
+        h=block_z + 4,
+        $fn=48
+      );
   }
 }
 
@@ -304,8 +337,12 @@ module test_spacer_only() {
   union() {
     cube([block_x, block_y, block_z], center=true);
     // spacer (sits on top of frame body)
-    translate([0, 0, block_z / 2 - .1])
-      cylinder(d=spacer_diam, h=spacer_height + .1, $fn=48);
+    translate([0, 0, block_z / 2 - 0.1])
+      cylinder(
+        d=spacer_diam,
+        h=spacer_height + 0.1,
+        $fn=48
+      );
   }
 }
 
@@ -316,7 +353,7 @@ module tests() {
 }
 
 ///////////////////////////////////////////////////////////////
-//  ASSEMBLY VIEW (NO BEARINGS)
+//  ASSEMBLY VIEW (NO CENTER BEARING SHAFT KEYING YET)
 ///////////////////////////////////////////////////////////////
 // Gears:          -2 .. +2
 // Lower frame top spacer should contact gear bottom at -2
@@ -325,7 +362,7 @@ module tests() {
 module assembly() {
 
   // Lower frame: local spacer top at (frame_height + spacer_height)
-  // Shift so that -> global z = -gear_height/2 = -2
+  // Shift so that -> global z = -gear_height/2 = -2 (approx; eps may nudge)
   lower_shift = -(frame_height + spacer_height + gear_height / 2);
 
   // Upper frame: local spacer bottom at z = -spacer_height
