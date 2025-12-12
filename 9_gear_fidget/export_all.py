@@ -10,27 +10,9 @@ OPENSCAD=r"C:\Program Files\OpenSCAD (Nightly)\openscad.exe"
 #OPENSCAD = r"C:\Program Files\OpenSCAD\openscad.exe"
 SCAD_FILE = "9_gear_fidget.scad"
 
-OUT_ROOT = pathlib.Path("exports")
-OUT_ROOT.mkdir(exist_ok=True)
+OUT_DIR = pathlib.Path("exports")
+OUT_DIR.mkdir(exist_ok=True)
 
-# -------------------------------------------------
-# AUTO VERSIONING
-# -------------------------------------------------
-
-def next_version(root: pathlib.Path) -> int:
-    versions = []
-    for p in root.iterdir():
-        m = re.match(r"v(\d+)", p.name)
-        if m:
-            versions.append(int(m.group(1)))
-    return max(versions, default=0) + 1
-
-
-VERSION = next_version(OUT_ROOT)
-OUT_DIR = OUT_ROOT / f"v{VERSION:03d}"
-OUT_DIR.mkdir()
-
-print(f"Exporting version v{VERSION:03d}")
 
 # -------------------------------------------------
 # PARTS TO EXPORT
