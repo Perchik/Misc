@@ -12,8 +12,16 @@ eps = 0.01;
 ///////////////////////////////////////////////////////////////
 
 // --- Tolerances ---
-press_fit_tol = 0.13; // for tight fits (press)
-loose_fit_tol = 0.30; // for running fits (clearance)
+//
+// tight_fit_tol:
+//   Hole is THIS MUCH LARGER than shaft.
+//   Intended to assemble without spinning or sliding under load.
+//
+// loose_fit_tol:
+//   Free-running clearance.
+//
+tight_fit_tol = 0.13;
+loose_fit_tol = 0.30;
 
 // --- Gear geometry ---
 gear_teeth = 12;
@@ -21,13 +29,14 @@ gear_od = 28;
 pa_deg = 20;
 modul = gear_od / (gear_teeth + 2);
 center_dist = modul * gear_teeth;
-gear_height = 4; // gear thickness
+gear_height = 4;
 
 // --- Axles for 8 outer gears ---
 axle_shaft_diam = 5;
-axle_hole_diam = axle_shaft_diam + press_fit_tol;
+axle_hole_diam = axle_shaft_diam + tight_fit_tol;
 axle_bore_diam = axle_shaft_diam + loose_fit_tol;
 axle_inset = 2;
+
 spacer_diam = 6.7;
 spacer_height = 0.6;
 axle_length = gear_height + spacer_height + axle_inset;
@@ -36,7 +45,8 @@ axle_length = gear_height + spacer_height + axle_inset;
 bearing_id = 5;
 bearing_od = 13;
 bearing_width = 4;
-bearing_pocket_diam = bearing_od + press_fit_tol;
+
+bearing_pocket_diam = bearing_od + tight_fit_tol;
 bearing_pocket_depth = bearing_width;
 bearing_pocket_floor = 2;
 
@@ -46,14 +56,14 @@ frame_bar_width = 2;
 corner_diam_all = 8;
 
 // --- Hex shaft geometry ---
-center_shaft_hex_af = 3.0; // Across flats
-center_shaft_round_d = bearing_id + press_fit_tol; // OD press-fit into inner race
+center_shaft_hex_af = 3.0; // across flats
+center_shaft_round_d = bearing_id + tight_fit_tol;
 
-// Hex clearance hole in frame:
+// Clearance hole through frame floors (must clear hex corners)
 center_shaft_clearance_d =
 2 * (center_shaft_hex_af / sqrt(3)) + loose_fit_tol;
 
-// Derived lengths
+// --- Derived lengths ---
 shaft_total_len = 2 * (frame_height + spacer_height + gear_height);
 shaft_extra_each = 3;
 
@@ -79,6 +89,8 @@ function point_from_key(points, key) = points[key - 1];
 function distance(a, b) =
   sqrt((a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]));
 
+function hex_circumradius(af) = af / sqrt(3);
+
 module rect_between(p1, p2, w) {
   dx = p2[0] - p1[0];
   dy = p2[1] - p1[1];
@@ -93,8 +105,12 @@ module rect_between(p1, p2, w) {
 }
 
 module hex2d(af) {
-  R = af / sqrt(3);
-  polygon(points=[for (i = [0:5]) [R * cos(60 * i), R * sin(60 * i)]]);
+  R = hex_circumradius(af);
+  polygon(
+    points=[
+      for (i = [0:5]) [R * cos(60 * i), R * sin(60 * i)],
+    ]
+  );
 }
 
 ///////////////////////////////////////////////////////////////
@@ -132,11 +148,13 @@ module center_shaft() {
       hex2d(center_shaft_hex_af);
 }
 
+// Journal = round sleeve riding in bearing inner race,
+// keyed (hex) to the center shaft to transmit torque
 module center_journal() {
   journal_len = bearing_width + 2 * eps;
 
   difference() {
-    // Outer cylinder – press fits into bearing inner race
+    // Outer: mates with bearing inner race
     cylinder(
       d=center_shaft_round_d,
       h=journal_len,
@@ -144,11 +162,10 @@ module center_journal() {
       $fn=64
     );
 
-    // Inner hex – press-fit onto shaft
-    hex_af = center_shaft_hex_af + press_fit_tol;
+    // Inner: mates with hex shaft (non-spinning fit)
     translate([0, 0, -journal_len / 2 - eps])
       linear_extrude(height=journal_len + 2 * eps)
-        hex2d(hex_af);
+        hex2d(center_shaft_hex_af + tight_fit_tol);
   }
 }
 
@@ -162,11 +179,11 @@ module frame_shape_2d(points, w) {
     [1, 3],
     [3, 9],
     [9, 7],
-    [7, 1], // outer square
+    [7, 1],
     [2, 5],
     [4, 5],
     [5, 6],
-    [5, 8], // internal struts
+    [5, 8],
   ];
 
   union() {
@@ -183,7 +200,6 @@ module frame_shape_2d(points, w) {
       d =
         (k == 5) ? (bearing_pocket_diam + 2 * frame_bar_width)
         : corner_diam_all;
-
       translate(p) circle(d=d, $fn=64);
     }
 
@@ -223,11 +239,7 @@ module frame(points, is_upper = false) {
 
       // Spacer
       translate([p[0], p[1], frame_height - eps])
-        cylinder(
-          d=spacer_diam,
-          h=spacer_height + 2 * eps,
-          $fn=48
-        );
+        cylinder(d=spacer_diam, h=spacer_height + 2 * eps, $fn=48);
 
       // Axle (lower frame only)
       if (!is_upper) {
@@ -288,8 +300,6 @@ module gear_with_bore(bore_d) {
 }
 
 module gear_with_hex_bore(af) {
-  hex_r = af / sqrt(3);
-
   translate([0, 0, -gear_height / 2])
     difference() {
       spur_gear(
@@ -301,12 +311,12 @@ module gear_with_hex_bore(af) {
         optimized=false
       );
 
-      // subtract hex
       translate([0, 0, -eps])
         linear_extrude(height=gear_height + 2 * eps)
           hex2d(af);
     }
 }
+
 module gears_at_points(points) {
   half_tooth_angle = 180 / gear_teeth; // for visual meshing
 
@@ -318,16 +328,12 @@ module gears_at_points(points) {
     translate([p[0], p[1], 0])
       rotate([0, 0, ang]) {
         if (key == 5)
-          gear_with_hex_bore(center_shaft_hex_af + press_fit_tol);
+          gear_with_hex_bore(center_shaft_hex_af + tight_fit_tol);
         else
           gear_with_bore(axle_bore_diam);
       }
   }
 }
-
-///////////////////////////////////////////////////////////////
-//  VISUAL HELPERS
-///////////////////////////////////////////////////////////////
 
 module bearing_visual() {
   difference() {
@@ -337,11 +343,15 @@ module bearing_visual() {
 }
 
 ///////////////////////////////////////////////////////////////
-//  TEST PIECES — ROUND, HEX, JOURNAL, POCKETS
+//  TEST PIECES — FIT & TOLERANCE VERIFICATION
+//  (Foldable, never exported unless explicitly rendered)
 ///////////////////////////////////////////////////////////////
 
 module tests_suite() {
+
+  ///////////////////////////////////////////////////////////////
   // Test 1 — Printed axle shaft size check
+  ///////////////////////////////////////////////////////////////
   module test_axle_block() {
     block_x = 30;
     block_y = 20;
@@ -360,7 +370,9 @@ module tests_suite() {
     }
   }
 
-  // Test 2 — Upper frame axle hole sizing
+  ///////////////////////////////////////////////////////////////
+  // Test 2 — Upper frame axle hole (tight-fit)
+  ///////////////////////////////////////////////////////////////
   module test_hole_block() {
     block_x = 30;
     block_y = 20;
@@ -379,7 +391,9 @@ module tests_suite() {
     }
   }
 
-  // Test 3 — Spacer disc test
+  ///////////////////////////////////////////////////////////////
+  // Test 3 — Spacer disc
+  ///////////////////////////////////////////////////////////////
   module test_spacer_only() {
     block_x = 30;
     block_y = 15;
@@ -398,19 +412,19 @@ module tests_suite() {
   }
 
   ///////////////////////////////////////////////////////////////
-  //  HEX SHAFT / PRESS-FIT TESTS
+  // Test 4 — Hex shaft sample
   ///////////////////////////////////////////////////////////////
-
-  // Test 4 — Hex shaft sample (20 mm tall)
   module test_hex_shaft() {
     translate([0, 0, -10])
       linear_extrude(height=20)
         hex2d(center_shaft_hex_af);
   }
 
-  // Test 5 — Center gear hex bore press-fit test
+  ///////////////////////////////////////////////////////////////
+  // Test 5 — Gear hex bore (tight-fit)
+  ///////////////////////////////////////////////////////////////
   module test_hex_bore_gear() {
-    hex_af = center_shaft_hex_af + press_fit_tol;
+    hex_af = center_shaft_hex_af + tight_fit_tol;
 
     difference() {
       cube([20, 20, 10], center=true);
@@ -421,9 +435,11 @@ module tests_suite() {
     }
   }
 
-  // Test 6 — Journal hex bore press-fit test
+  ///////////////////////////////////////////////////////////////
+  // Test 6 — Journal hex bore (tight-fit)
+  ///////////////////////////////////////////////////////////////
   module test_hex_bore_journal() {
-    hex_af = center_shaft_hex_af + press_fit_tol;
+    hex_af = center_shaft_hex_af + tight_fit_tol;
 
     difference() {
       cube([20, 20, 10], center=true);
@@ -434,7 +450,9 @@ module tests_suite() {
     }
   }
 
-  // Test 7 — Journal outer diameter press-fit test (bearing inner race)
+  ///////////////////////////////////////////////////////////////
+  // Test 7 — Journal outer diameter (bearing inner race)
+  ///////////////////////////////////////////////////////////////
   module test_journal_outer() {
     difference() {
       cube([20, 20, 10], center=true);
@@ -448,7 +466,9 @@ module tests_suite() {
     }
   }
 
-  // Test 8 — Frame bearing pocket press-fit test (outer race)
+  ///////////////////////////////////////////////////////////////
+  // Test 8 — Frame bearing pocket (outer race)
+  ///////////////////////////////////////////////////////////////
   module test_bearing_pocket() {
     difference() {
       cube([22, 22, 10], center=true);
@@ -463,9 +483,8 @@ module tests_suite() {
   }
 
   ///////////////////////////////////////////////////////////////
-  //  COMBINED TEST PANEL 
+  // Combined test layout
   ///////////////////////////////////////////////////////////////
-
   module tests() {
     spacing = 35;
 
@@ -480,19 +499,19 @@ module tests_suite() {
     translate([0, -spacing, 0]) test_journal_outer();
     translate([spacing, -spacing, 0]) test_bearing_pocket();
   }
+
   tests();
 }
+
 ///////////////////////////////////////////////////////////////
-//  ASSEMBLY VIEW (COLOR-CODED)
+//  ASSEMBLY VIEW
 ///////////////////////////////////////////////////////////////
 
 module assembly() {
   pc = point_from_key(points_3x3, 5);
 
-  lower_shift =
-  -(frame_height + spacer_height + gear_height / 2);
-  upper_shift =
-  +(frame_height - gear_height / 2 + frame_height + spacer_height);
+  lower_shift = -(frame_height + spacer_height + gear_height / 2);
+  upper_shift = +(frame_height - gear_height / 2 + frame_height + spacer_height);
 
   bearing_center_local =
   bearing_pocket_floor + bearing_pocket_depth / 2;
@@ -535,68 +554,6 @@ module assembly() {
     translate([pc[0], pc[1], 0])
       center_shaft();
 }
-
-// -----------------------------------------
-// Printable, orientation-correct parts
-// -----------------------------------------
-
-module part_lower_frame() {
-  frame(points_3x3, false); // flat side already down
-}
-
-module part_upper_frame() {
-  upper_frame(points_3x3); // flat side down by default, flipped in assembly
-}
-
-module part_center_gear() {
-  gear_with_hex_bore(center_shaft_hex_af + press_fit_tol);
-}
-
-module part_round_gear() {
-  gear_with_bore(axle_bore_diam);
-}
-
-module part_center_shaft() {
-  rotate([90,0,0])
-  center_shaft();
-}
-
-module part_center_journal() {
-  center_journal();
-}
-
-// -----------------------------------------
-// Exploded layout for printing
-// -----------------------------------------
-
-module exploded_plate() {
-  spacing = 60;
-
-  // Lower and upper frame
-  translate([0, 0, 0])
-    part_lower_frame();
-
-  translate([spacing, 0, 0])
-    part_upper_frame();
-
-  // Center gear
-  translate([2 * spacing, 0, 0])
-    part_center_gear();
-
-  // Hex shaft
-  translate([3 * spacing, 0, 0])
-    rotate([90, 0, 0])
-      part_center_shaft();
-
-  // Journals
-  translate([4 * spacing, 0, 0])
-    part_center_journal();
-
-  // Round gears (all 8)
-  translate([0, -spacing, 0])
-    part_round_gears();
-}
-
 ///////////////////////////////////////////////////////////////
 //  RENDERING
 ///////////////////////////////////////////////////////////////
@@ -609,36 +566,28 @@ module exploded_plate() {
 //gear_with_hex_bore(center_shaft_hex_af + press_fit_tol);
 //tests_suite();
 //test_bearing_pocket();
-//exploded_plate();
 
-// -------------------------------------------------
-// CLI EXPORT DISPATCHER
-// -------------------------------------------------
+///////////////////////////////////////////////////////////////
+//  CLI EXPORT DISPATCHER
+///////////////////////////////////////////////////////////////
 
 if (!is_undef(EXPORT_PART)) {
-
-    if (EXPORT_PART == "lower_frame")
-        part_lower_frame();
-
-    else if (EXPORT_PART == "upper_frame")
-        part_upper_frame();
-
-    else if (EXPORT_PART == "center_gear")
-        part_center_gear();
-
-    else if (EXPORT_PART == "round_gear")
-        part_round_gear();
-
-    else if (EXPORT_PART == "center_journal")
-        part_center_journal();
-
-    else if (EXPORT_PART == "center_shaft")
-        part_center_shaft();
-
-    else
-        echo(str("Unknown EXPORT_PART: ", EXPORT_PART));
+  if (EXPORT_PART == "lower_frame")
+    frame(points_3x3, false);
+  else if (EXPORT_PART == "upper_frame")
+    upper_frame(points_3x3);
+  else if (EXPORT_PART == "center_gear")
+    gear_with_hex_bore(center_shaft_hex_af + tight_fit_tol);
+  else if (EXPORT_PART == "round_gear")
+    gear_with_bore(axle_bore_diam);
+  else if (EXPORT_PART == "center_journal")
+    center_journal();
+  else if (EXPORT_PART == "center_shaft")
+    rotate([90, 0, 0]) center_shaft();
+  else
+    echo(str("Unknown EXPORT_PART: ", EXPORT_PART));
 }
 
 if (!is_undef(RENDER_ASSEMBLY)) {
-    assembly();
+  assembly();
 }
