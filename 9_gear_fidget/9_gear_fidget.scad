@@ -59,6 +59,16 @@ corner_diam_all = 8;
 center_shaft_hex_af = 3.0; // across flats
 center_shaft_round_d = bearing_id + tight_fit_tol;
 
+// Nominal hex across-flats (shaft)
+center_hex_af_nominal = center_shaft_hex_af;
+
+// Tight-fit hex hole (non-spinning fit in gear & journal)
+center_hex_af_tight = center_hex_af_nominal + tight_fit_tol;
+
+// Circumradius helpers
+center_hex_R_nominal = hex_circumradius(center_hex_af_nominal);
+center_hex_R_tight = hex_circumradius(center_hex_af_tight);
+
 // Clearance hole through frame floors (must clear hex corners)
 center_shaft_clearance_d =
 2 * (center_shaft_hex_af / sqrt(3)) + loose_fit_tol;
@@ -113,6 +123,18 @@ module hex2d(af) {
   );
 }
 
+// Z-safe solid cylinder (extends slightly past bounds)
+module cyl_solid(d, h, z0 = 0, fn = 48) {
+  translate([0, 0, z0 - eps])
+    cylinder(d=d, h=h + 2 * eps, $fn=fn);
+}
+
+// Z-safe subtractive cylinder
+module cyl_cut(d, h, z0 = 0, fn = 48) {
+  translate([0, 0, z0 - eps])
+    cylinder(d=d, h=h + 2 * eps, $fn=fn);
+}
+
 ///////////////////////////////////////////////////////////////
 //  FRAME POCKETS / CUTOUTS
 ///////////////////////////////////////////////////////////////
@@ -120,21 +142,13 @@ module hex2d(af) {
 module center_bearing_pocket(points) {
   pc = point_from_key(points, 5);
   translate([pc[0], pc[1], bearing_pocket_floor - eps])
-    cylinder(
-      d=bearing_pocket_diam,
-      h=bearing_pocket_depth + 2 * eps,
-      $fn=64
-    );
+    cyl_cut(bearing_pocket_diam, bearing_pocket_depth, bearing_pocket_floor);
 }
 
 module center_shaft_hole(points) {
   pc = point_from_key(points, 5);
   translate([pc[0], pc[1], -eps])
-    cylinder(
-      d=center_shaft_clearance_d,
-      h=frame_height + 2 * eps,
-      $fn=48
-    );
+    cyl_cut(center_shaft_clearance_d, frame_height);
 }
 
 ///////////////////////////////////////////////////////////////
@@ -165,7 +179,7 @@ module center_journal() {
     // Inner: mates with hex shaft (non-spinning fit)
     translate([0, 0, -journal_len / 2 - eps])
       linear_extrude(height=journal_len + 2 * eps)
-        hex2d(center_shaft_hex_af + tight_fit_tol);
+        hex2d(center_hex_af_tight);
   }
 }
 
@@ -239,7 +253,7 @@ module frame(points, is_upper = false) {
 
       // Spacer
       translate([p[0], p[1], frame_height - eps])
-        cylinder(d=spacer_diam, h=spacer_height + 2 * eps, $fn=48);
+        cyl_solid(spacer_diam, spacer_height);
 
       // Axle (lower frame only)
       if (!is_upper) {
@@ -250,11 +264,7 @@ module frame(points, is_upper = false) {
             frame_height + spacer_height - eps,
           ]
         )
-          cylinder(
-            d=axle_shaft_diam,
-            h=axle_length + 2 * eps,
-            $fn=48
-          );
+          cyl_solid(axle_shaft_diam, axle_length);
       }
     }
   }
@@ -313,7 +323,7 @@ module gear_with_hex_bore(af) {
 
       translate([0, 0, -eps])
         linear_extrude(height=gear_height + 2 * eps)
-          hex2d(af);
+          hex2d(center_hex_af_tight);
     }
 }
 
@@ -328,7 +338,7 @@ module gears_at_points(points) {
     translate([p[0], p[1], 0])
       rotate([0, 0, ang]) {
         if (key == 5)
-          gear_with_hex_bore(center_shaft_hex_af + tight_fit_tol);
+          gear_with_hex_bore(center_hex_af_tight);
         else
           gear_with_bore(axle_bore_diam);
       }
@@ -424,14 +434,13 @@ module tests_suite() {
   // Test 5 — Gear hex bore (tight-fit)
   ///////////////////////////////////////////////////////////////
   module test_hex_bore_gear() {
-    hex_af = center_shaft_hex_af + tight_fit_tol;
 
     difference() {
       cube([20, 20, 10], center=true);
 
       translate([0, 0, -6])
         linear_extrude(height=12)
-          hex2d(hex_af);
+          hex2d(center_shaft_hex_af);
     }
   }
 
@@ -439,14 +448,12 @@ module tests_suite() {
   // Test 6 — Journal hex bore (tight-fit)
   ///////////////////////////////////////////////////////////////
   module test_hex_bore_journal() {
-    hex_af = center_shaft_hex_af + tight_fit_tol;
-
     difference() {
       cube([20, 20, 10], center=true);
 
       translate([0, 0, -6])
         linear_extrude(height=12)
-          hex2d(hex_af);
+          hex2d(center_shaft_hex_af);
     }
   }
 
@@ -558,7 +565,7 @@ module assembly() {
 //  RENDERING
 ///////////////////////////////////////////////////////////////
 
-//assembly();
+assembly(); 
 //frame(points_3x3);
 //upper_frame(points_3x3);
 //center_shaft();
