@@ -20,7 +20,7 @@ eps = 0.01;
 // loose_fit_tol:
 //   Free-running clearance.
 //
-tight_fit_tol = 0.13;
+tight_fit_tol = 0.16;
 loose_fit_tol = 0.30;
 
 // --- Gear geometry ---
@@ -565,7 +565,7 @@ module assembly() {
 //  RENDERING
 ///////////////////////////////////////////////////////////////
 
-assembly();
+//assembly();
 //frame(points_3x3);
 //upper_frame(points_3x3);
 //center_shaft();
