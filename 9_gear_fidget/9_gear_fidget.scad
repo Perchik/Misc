@@ -517,8 +517,8 @@ module tests_suite() {
 module assembly() {
   pc = point_from_key(points_3x3, 5);
 
-  lower_shift = -(frame_height + spacer_height + gear_height / 2);
-  upper_shift = +(frame_height - gear_height / 2 + frame_height + spacer_height);
+  lower_shift = -gear_height / 2 - spacer_height - frame_height;
+  upper_shift = +gear_height / 2 + 2*spacer_height+frame_height;
 
   bearing_center_local =
   bearing_pocket_floor + bearing_pocket_depth / 2;
@@ -565,7 +565,7 @@ module assembly() {
 //  RENDERING
 ///////////////////////////////////////////////////////////////
 
-assembly(); 
+assembly();
 //frame(points_3x3);
 //upper_frame(points_3x3);
 //center_shaft();
